@@ -1,0 +1,19 @@
+# Dependency directories
+/node_modules
+/server/node_modules
+/client/node_modules
+
+# Build output directories
+/client/dist
+/build
+
+# Sensitive files (CRITICAL: Prevents your MongoDB URI from being uploaded)
+.env
+
+# Logs and other temporary files
+*.log
+npm-debug.log*
+
+# OS and Editor specific files
+.DS_Store
+.vscode
