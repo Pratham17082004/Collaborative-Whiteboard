@@ -1,6 +1,3 @@
-import React, { useRef, useEffect, useState } from 'react';
-import './Canvas.css'; 
-
 const Canvas = ({ socket, roomId, tool, eraserSize }) => {
   const canvasRef = useRef(null);
   const contextRef = useRef(null);
@@ -10,7 +7,7 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
   const startXRef = useRef(0);
   const startYRef = useRef(0);
 
-  // --- Utility Function to Draw a Line ---
+  // --- Utility Function to Draw a Line (Stays stable) ---
   const drawLine = (x0, y0, x1, y1, color, size) => { 
     const context = contextRef.current;
     
@@ -39,12 +36,12 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
   // --- Core Sizing Logic (Full Screen Fix) ---
   const setCanvasSize = () => {
     if (canvasRef.current && containerRef.current) {
-        // Use full window size, minus space for header and controls (approx 150px total)
-        canvasRef.current.width = window.innerWidth;
+        // Use 95% of window width and 75% of window height for maximum drawing area
+        canvasRef.current.width = window.innerWidth * 0.95;
+        // Subtract a bit of space (150px) for the control panel/header
         canvasRef.current.height = Math.max(window.innerHeight - 150, 400); 
     }
   };
-
 
   // --- Event Handler Utility ---
   const getCoordinates = (e) => {
@@ -65,7 +62,7 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
     const color = tool === 'eraser' ? '#FFFFFF' : '#000000';
     const size = tool === 'eraser' ? eraserSize : 5;
     
-    // Draw locally
+    // Draw locally (This line must persist!)
     drawLine(x0, y0, x1, y1, color, size); 
 
     // Emit drawing data to the server
@@ -73,7 +70,7 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
       socket.emit('drawing', { x0, y0, x1, y1, color, size });
     }
 
-    // CRITICAL: Update start points for the next segment
+    // Update start points for the next segment
     startXRef.current = x1;
     startYRef.current = y1;
   };
@@ -100,13 +97,16 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
   };
 
   const stopDrawing = () => {
+    // CRITICAL: This is the only place setIsDrawing(false) is called.
+    // It should NOT clear the canvas.
     setIsDrawing(false);
   };
   
-  // --- Initial Setup and Real-Time Listener (Cleaned up touch logic) ---
+  // --- Initial Setup and Real-Time Listener (The Fix is here!) ---
   useEffect(() => {
     const canvas = canvasRef.current;
     
+    // Set initial size and listener (Layout fix)
     setCanvasSize();
     window.addEventListener('resize', setCanvasSize);
     
@@ -114,9 +114,15 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
     context.lineCap = 'round';
     contextRef.current = context;
 
+    // --- Socket Listeners (Stabilized by simple dependencies) ---
     if (!socket || !roomId) return () => window.removeEventListener('resize', setCanvasSize);
       
-    // ... socket listeners ...
+    // The rest of the socket listeners remain the same...
+    const handleHistory = (history) => {
+        setTimeout(() => { redrawCanvasWithHistory(history); }, 50); 
+    };
+    socket.on('drawingHistory', handleHistory);
+
     const handleRemoteDrawing = (data) => {
         drawLine(data.x0, data.y0, data.x1, data.y1, data.color, data.size);
     };
@@ -128,33 +134,34 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
     socket.on('canvasCleared', handleCanvasCleared);
     
     // FIX FOR TOUCH DRAGGING: Manual listener with { passive: false }
-    // This handler must be re-created every time 'isDrawing' changes state
     const touchMoveHandler = (e) => {
-        // Prevents scrolling while actively drawing
         e.preventDefault(); 
         
-        // CRITICAL: Only call drawing if the mouse/finger is actively down
+        // Use the current isDrawing state to know if we should draw
         if (isDrawing && e.touches && e.touches.length > 0) {
-            // Pass the touch event data to the drawing function
             drawing(e.touches[0]); 
         }
     };
 
     // Add the listener with the critical { passive: false } option
+    // NOTE: This listener is added once on mount due to dependencies [].
     canvas.addEventListener('touchmove', touchMoveHandler, { passive: false });
 
 
     // Cleanup function: remove listeners 
     return () => {
         socket.off('drawing', handleRemoteDrawing);
+        socket.off('drawingHistory', handleHistory);
         socket.off('canvasCleared', handleCanvasCleared);
         canvas.removeEventListener('touchmove', touchMoveHandler); 
         window.removeEventListener('resize', setCanvasSize);
     };
-  }, [socket, roomId, isDrawing, eraserSize, tool]); // Dependencies added
+    // CRITICAL FIX: Empty dependency array (or only [socket, roomId]) ensures 
+    // context initialization is stable and doesn't wipe the canvas on state changes.
+  }, [socket, roomId]); 
 
+  // The rest of the component remains the same
   return (
-    // Add the container ref for dynamic sizing 
     // w-full max-w-none ensures the canvas fills the viewport width
     <div ref={containerRef} className="w-full max-w-none flex justify-center flex-grow">
         <canvas
@@ -164,10 +171,9 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
             onMouseMove={drawing}
             onMouseUp={stopDrawing}
             onMouseOut={stopDrawing} 
-            // onTouchStart handles the tap (startDrawing)
             onTouchStart={(e) => startDrawing(e.touches[0])}
-            // onTouchMove is handled by the manual listener in useEffect
             onTouchEnd={stopDrawing}
+            // onTouchMove is handled by the manual listener in useEffect
         />
     </div>
   );
