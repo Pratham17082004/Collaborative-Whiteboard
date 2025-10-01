@@ -14,18 +14,17 @@ const COLLECTION_NAME = "drawings";
 
 let db; // Global reference to the database instance
 
-// CRITICAL FIX: Dynamically set the allowed origin
-// Reads the CLIENT_URL from Render Environment Variables, or defaults to localhost
-const ALLOWED_ORIGIN = process.env.CLIENT_URL || "http://localhost:5173";
+const VERCEL_URL = "https://collaborative-whiteboard-pink.vercel.app";
 
 const server = http.createServer(app);
 
+// FINAL CORS CONFIGURATION: Explicitly allow the Vercel domain and credentials
 const io = new Server(server, {
   cors: {
-    origin: ALLOWED_ORIGIN, // Use the dynamic variable here
-    methods: ["GET", "POST"]
+    origin: [VERCEL_URL, "http://localhost:5173"], // Allow Vercel and local origins
+    methods: ["GET", "POST"],
+    credentials: true // Crucial for cross-origin Socket.IO connections
   },
-  // Ensure Socket.IO uses the deployed URL when communicating
   path: '/socket.io' // Helps with Render proxy configuration
 });
 
