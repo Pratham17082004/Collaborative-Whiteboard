@@ -2,30 +2,29 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const { MongoClient } = require('mongodb');
-require('dotenv').config(); // Load environment variables
+require('dotenv').config(); 
 
 const app = express();
-// Render typically provides the PORT, but we default to 5000
 const PORT = process.env.PORT || 5000; 
 
 const MONGO_URI = process.env.MONGO_URI;
 const DATABASE_NAME = process.env.DATABASE_NAME || "whiteboard_db";
 const COLLECTION_NAME = "drawings";
 
-let db; // Global reference to the database instance
+const VERCEL_URL = "https://collaborative-whiteboard-pink.vercel.app"; // Your live client domain
 
-const VERCEL_URL = "https://collaborative-whiteboard-pink.vercel.app";
+let db; 
 
 const server = http.createServer(app);
 
-// FINAL CORS CONFIGURATION: Explicitly allow the Vercel domain and credentials
+// Final CORS Configuration
 const io = new Server(server, {
   cors: {
-    origin: [VERCEL_URL, "http://localhost:5173"], // Allow Vercel and local origins
+    origin: [VERCEL_URL, "http://localhost:5173"],
     methods: ["GET", "POST"],
-    credentials: true // Crucial for cross-origin Socket.IO connections
+    credentials: true
   },
-  path: '/socket.io' // Helps with Render proxy configuration
+  path: '/socket.io'
 });
 
 /**
@@ -43,6 +42,23 @@ async function connectToMongo() {
         process.exit(1); 
     }
 }
+
+// Utility function to handle clearing and broadcasting the result
+async function handleClearCanvas(roomId) {
+    if (!db) return; // Database not ready
+
+    try {
+        // Delete all records for this room from MongoDB
+        const result = await db.collection(COLLECTION_NAME).deleteMany({ roomId: roomId });
+        console.log(`Cleared ${result.deletedCount} records for room: ${roomId}`);
+        
+        // Broadcast clear command to everyone in the room (including sender)
+        io.to(roomId).emit('canvasCleared');
+    } catch (error) {
+        console.error("Error clearing canvas:", error);
+    }
+}
+
 
 // Call connectToMongo and then start the server
 connectToMongo().then(() => {
@@ -78,16 +94,10 @@ connectToMongo().then(() => {
             socket.to(currentRoomId).emit('drawing', data);
         });
         
-        // 3. Handle clearing the canvas
-        socket.on('clearCanvas', async () => {
+        // 3. Handle clearing the canvas (Calling the robust utility function)
+        socket.on('clearCanvas', () => {
             if (!currentRoomId) return;
-
-            // 3a. Delete all records for this room from MongoDB
-            await db.collection(COLLECTION_NAME).deleteMany({ roomId: currentRoomId });
-            console.log(`Cleared canvas for room: ${currentRoomId}`);
-            
-            // 3b. Broadcast clear command to everyone in the room (including sender)
-            io.to(currentRoomId).emit('canvasCleared');
+            handleClearCanvas(currentRoomId);
         });
 
         socket.on('disconnect', () => {

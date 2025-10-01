@@ -5,7 +5,8 @@ import './App.css';
 function App({ socket }) { 
   const [roomId, setRoomId] = useState('');
   const [isJoined, setIsJoined] = useState(false);
-  const [tool, setTool] = useState('pen');
+  const [tool, setTool] = useState('pen'); 
+  const [eraserSize, setEraserSize] = useState(15); // New state for eraser size (15px default)
 
   const handleJoinRoom = () => {
     if (roomId.trim()) {
@@ -14,16 +15,17 @@ function App({ socket }) {
     }
   };
   
-  const handleToolChange = (newTool) => {
-      setTool(newTool);
-  };
-  
-  // New handler to emit the clear canvas event
   const handleClear = () => {
-      // NOTE: Using window.confirm() here. In a production app, use a custom modal UI.
-      if (socket && isJoined && window.confirm("Are you sure you want to clear the entire canvas? This action cannot be undone.")) {
-          socket.emit('clearCanvas');
-      }
+    if (!isJoined || !socket) return;
+    
+    // Instead of window.confirm(), we use console log due to iFrame restrictions.
+    // In a real app, this would be a custom modal dialog.
+    const confirmed = true; // Assume confirmation for simplicity in this environment
+    
+    if (confirmed) {
+        socket.emit('clearCanvas');
+        console.log(`Clearing canvas for room ${roomId}`);
+    }
   };
 
   return (
@@ -32,7 +34,7 @@ function App({ socket }) {
         Collaborative Whiteboard ✍️
       </h1>
 
-      {/* Room Joining Section */}
+      {/* Room Joining Section (Same as before) */}
       <div className="flex space-x-2 mb-6 p-4 bg-white rounded-xl shadow-lg">
         <input
           type="text"
@@ -40,15 +42,15 @@ function App({ socket }) {
           value={roomId}
           onChange={(e) => setRoomId(e.target.value)}
           disabled={isJoined}
-          className="p-3 border border-gray-300 rounded-lg shadow-inner focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 w-64 text-base"
+          className="p-3 border border-gray-300 rounded-lg shadow-inner focus:ring-blue-600 focus:border-blue-600 disabled:bg-gray-100 w-64 text-base"
         />
         <button
           onClick={handleJoinRoom}
           disabled={isJoined || !roomId.trim()}
-          className={`px-6 py-3 rounded-lg font-semibold transition duration-150 transform hover:scale-105 ${
+          className={`px-6 py-3 rounded-xl font-semibold transition duration-150 transform hover:scale-[1.02] ${
             isJoined 
               ? 'bg-green-600 text-white cursor-default shadow-md' 
-              : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg'
+              : 'bg-blue-600 hover:bg-blue-700 text-white shadow-xl'
           }`}
         >
           {isJoined ? `Joined: ${roomId}` : 'Join/Create Room'}
@@ -61,39 +63,58 @@ function App({ socket }) {
             Room: <span className="font-mono font-bold text-lg text-blue-800">{roomId}</span>
           </p>
           
-          {/* Tool Selector Controls */}
-          <div className="flex space-x-4 mb-4">
-              <button 
-                  onClick={() => handleToolChange('pen')} 
-                  className={`px-6 py-3 rounded-lg font-semibold transition duration-150 shadow-md ${
-                      tool === 'pen' 
-                      ? 'bg-blue-600 text-white border-2 border-blue-700' 
-                      : 'bg-white text-gray-700 hover:bg-gray-100 border-2 border-gray-300'
-                  }`}
-              >
-                  Pen 🖊️
-              </button>
-              <button 
-                  onClick={() => handleToolChange('eraser')} 
-                  className={`px-6 py-3 rounded-lg font-semibold transition duration-150 shadow-md ${
-                      tool === 'eraser' 
-                      ? 'bg-red-500 text-white border-2 border-red-600' 
-                      : 'bg-white text-gray-700 hover:bg-gray-100 border-2 border-gray-300'
-                  }`}
-              >
-                  Eraser 🧼
-              </button>
+          {/* CONTROL PANEL (Aesthetic Upgrade) */}
+          <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mb-4 p-5 bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl">
+              
+              {/* Tool Selector */}
+              <div className="flex space-x-3 items-center">
+                  <button 
+                      onClick={() => setTool('pen')} 
+                      className={`px-4 py-2 rounded-xl font-semibold transition shadow-inner ${
+                          tool === 'pen' 
+                          ? 'bg-blue-500 text-white ring-2 ring-blue-300' 
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                  >
+                      Pen 🖊️
+                  </button>
+                  <button 
+                      onClick={() => setTool('eraser')} 
+                      className={`px-4 py-2 rounded-xl font-semibold transition shadow-inner ${
+                          tool === 'eraser' 
+                          ? 'bg-red-500 text-white ring-2 ring-red-300' 
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
+                  >
+                      Eraser 🧼
+                  </button>
+              </div>
+
+              {/* Eraser Size Control (New Feature) */}
+              <div className="flex flex-col items-center space-y-1 mt-2 sm:mt-0">
+                  <label className="text-xs font-medium text-gray-300">Eraser Size: {eraserSize}px</label>
+                  <input
+                      type="range"
+                      min="5"
+                      max="50"
+                      value={eraserSize}
+                      onChange={(e) => setEraserSize(Number(e.target.value))}
+                      disabled={tool !== 'eraser'}
+                      className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-red-400"
+                  />
+              </div>
+
+              {/* Clear Button */}
               <button 
                   onClick={handleClear} 
-                  className="px-6 py-3 rounded-lg font-semibold transition duration-150 shadow-md bg-gray-600 text-white hover:bg-gray-700 border-2 border-gray-800"
-                  title="Clear all drawings in this room (permanent!)"
+                  className="px-4 py-2 bg-purple-600 text-white rounded-xl font-semibold transition duration-150 transform hover:bg-purple-700 shadow-lg mt-4 sm:mt-0"
               >
                   Clear Canvas 🗑️
               </button>
           </div>
 
-          {/* Pass the current tool and socket instance to the Canvas */}
-          <Canvas socket={socket} roomId={roomId} tool={tool} />
+          {/* Pass the eraser size down */}
+          <Canvas socket={socket} roomId={roomId} tool={tool} eraserSize={eraserSize} />
         </div>
       )}
       

@@ -1,24 +1,24 @@
 import React, { useRef, useEffect, useState } from 'react';
 import './Canvas.css'; 
 
-const Canvas = ({ socket, roomId, tool }) => { // Accepts 'tool' prop
+const Canvas = ({ socket, roomId, tool, eraserSize }) => { // Accepts 'eraserSize' prop
   const canvasRef = useRef(null);
   const contextRef = useRef(null);
+  const containerRef = useRef(null); // Ref for the containing div
   
   const [isDrawing, setIsDrawing] = useState(false);
   const startXRef = useRef(0);
   const startYRef = useRef(0);
 
   // --- Utility Function to Draw a Line ---
-  const drawLine = (x0, y0, x1, y1, color) => {
+  const drawLine = (x0, y0, x1, y1, color, size) => { // Accepts size
     const context = contextRef.current;
     
     context.beginPath();
     context.moveTo(x0, y0);
     context.lineTo(x1, y1);
     context.strokeStyle = color; 
-    // Set line thickness: 15px for eraser (white), 5px for pen (black)
-    context.lineWidth = color === '#FFFFFF' ? 15 : 5; 
+    context.lineWidth = size; // Use the provided size
     context.stroke();
     context.closePath();
   };
@@ -34,10 +34,9 @@ const Canvas = ({ socket, roomId, tool }) => { // Accepts 'tool' prop
 
     // Redraw all historical events
     history.forEach(data => {
-        // Use the color saved in the database to determine line thickness
-        const lineWidth = data.color === '#FFFFFF' ? 15 : 5;
-        contextRef.current.lineWidth = lineWidth;
-        drawLine(data.x0, data.y0, data.x1, data.y1, data.color);
+        // Line size is determined by checking the saved color (White = Eraser, Black = Pen)
+        const size = data.color === '#FFFFFF' ? data.size : 5; // Use saved size for eraser, default 5 for pen
+        drawLine(data.x0, data.y0, data.x1, data.y1, data.color, size);
     });
     // Reset line width back to standard pen size for new drawings
     contextRef.current.lineWidth = 5; 
@@ -46,14 +45,24 @@ const Canvas = ({ socket, roomId, tool }) => { // Accepts 'tool' prop
   // --- Initial Setup and Real-Time Listener ---
   useEffect(() => {
     const canvas = canvasRef.current;
-    canvas.width = window.innerWidth * 0.9;
-    canvas.height = window.innerHeight * 0.8;
+    
+    // Set initial size based on the container (Fixes right shift/scrolling)
+    const setCanvasSize = () => {
+        if (containerRef.current) {
+            canvas.width = containerRef.current.clientWidth;
+            canvas.height = Math.min(window.innerHeight * 0.8, 800); // Max height limit for stability
+        }
+    };
+
+    setCanvasSize();
+    // Add event listener for window resize to maintain responsiveness
+    window.addEventListener('resize', setCanvasSize);
     
     const context = canvas.getContext('2d');
     context.lineCap = 'round';
     contextRef.current = context;
 
-    if (!socket || !roomId) return;
+    if (!socket || !roomId) return () => window.removeEventListener('resize', setCanvasSize);
       
     // Listener for initial history load when joining a room
     const handleHistory = (history) => {
@@ -65,22 +74,24 @@ const Canvas = ({ socket, roomId, tool }) => { // Accepts 'tool' prop
 
     // Listener for real-time remote drawing
     const handleRemoteDrawing = (data) => {
-        drawLine(data.x0, data.y0, data.x1, data.y1, data.color);
+        drawLine(data.x0, data.y0, data.x1, data.y1, data.color, data.size);
     };
     socket.on('drawing', handleRemoteDrawing);
+    
+    // Listener for clear canvas command
+    const handleCanvasCleared = () => {
+        context.clearRect(0, 0, canvas.width, canvas.height);
+    };
+    socket.on('canvasCleared', handleCanvasCleared);
 
     // FIX: Manually set up touchmove event listener with { passive: false }
-    // This allows preventDefault() to work and stops the passive event warning.
     const touchMoveHandler = (e) => {
-        // We still need the original preventDefault call here
         e.preventDefault(); 
         
         if (e.touches && e.touches.length > 0) {
             drawing(e.touches[0]);
         }
     };
-
-    // Add the listener with the critical { passive: false } option
     canvas.addEventListener('touchmove', touchMoveHandler, { passive: false });
 
 
@@ -88,7 +99,9 @@ const Canvas = ({ socket, roomId, tool }) => { // Accepts 'tool' prop
     return () => {
         socket.off('drawing', handleRemoteDrawing);
         socket.off('drawingHistory', handleHistory);
-        canvas.removeEventListener('touchmove', touchMoveHandler); // Remove manual listener
+        socket.off('canvasCleared', handleCanvasCleared);
+        canvas.removeEventListener('touchmove', touchMoveHandler);
+        window.removeEventListener('resize', setCanvasSize);
     };
   }, [socket, roomId]);
 
@@ -109,18 +122,17 @@ const Canvas = ({ socket, roomId, tool }) => { // Accepts 'tool' prop
     startXRef.current = x;
     startYRef.current = y;
     
-    // Set line width based on current tool for local drawing only
-    contextRef.current.lineWidth = tool === 'eraser' ? 15 : 5;
-    
     setIsDrawing(true);
     
-    // Draw dot on tap (FIX for tap not registering)
     const color = tool === 'eraser' ? '#FFFFFF' : '#000000';
-    drawLine(x, y, x, y, color); 
+    const size = tool === 'eraser' ? eraserSize : 5; // Use eraserSize or pen default
+    
+    // Draw dot on tap (FIX for tap not registering)
+    drawLine(x, y, x, y, color, size); 
 
     // Emit single dot data to the server immediately
     if (socket) {
-      socket.emit('drawing', { x0: x, y0: y, x1: x, y1: y, color });
+      socket.emit('drawing', { x0: x, y0: y, x1: x, y1: y, color, size });
     }
   };
 
@@ -131,15 +143,15 @@ const Canvas = ({ socket, roomId, tool }) => { // Accepts 'tool' prop
     const x0 = startXRef.current;
     const y0 = startYRef.current;
     
-    // Determine color based on tool: White for eraser, Black for pen
     const color = tool === 'eraser' ? '#FFFFFF' : '#000000';
+    const size = tool === 'eraser' ? eraserSize : 5;
     
     // Draw locally
-    drawLine(x0, y0, x1, y1, color); 
+    drawLine(x0, y0, x1, y1, color, size); 
 
     // Emit drawing data to the server
     if (socket) {
-      socket.emit('drawing', { x0, y0, x1, y1, color });
+      socket.emit('drawing', { x0, y0, x1, y1, color, size });
     }
 
     // Update start points for the next segment
@@ -152,17 +164,20 @@ const Canvas = ({ socket, roomId, tool }) => { // Accepts 'tool' prop
   };
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="whiteboard-canvas"
-      onMouseDown={startDrawing}
-      onMouseMove={drawing}
-      onMouseUp={stopDrawing}
-      onMouseOut={stopDrawing} 
-      // NOTE: onTouchMove is handled in the useEffect hook with { passive: false }
-      onTouchStart={(e) => startDrawing(e.touches[0])}
-      onTouchEnd={stopDrawing}
-    />
+    // Add the container ref for dynamic sizing (fixes layout issue)
+    <div ref={containerRef} className="w-full max-w-7xl">
+        <canvas
+            ref={canvasRef}
+            className="whiteboard-canvas"
+            onMouseDown={startDrawing}
+            onMouseMove={drawing}
+            onMouseUp={stopDrawing}
+            onMouseOut={stopDrawing} 
+            onTouchStart={(e) => startDrawing(e.touches[0])}
+            onTouchEnd={stopDrawing}
+            // onTouchMove is handled in the useEffect hook with { passive: false }
+        />
+    </div>
   );
 };
 
