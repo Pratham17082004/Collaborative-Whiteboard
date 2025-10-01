@@ -1,9 +1,8 @@
 .whiteboard-canvas {
-  border: 4px solid #333; /* Slightly thicker border for aesthetic upgrade */
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); /* Deeper shadow */
+  border: 4px solid #333; 
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); 
   display: block; 
-  margin: 0 auto; /* Ensures it's centered in its flex container */
+  margin: 0 auto; 
   cursor: crosshair; 
   background-color: #fff; 
-  /* Crucial: remove fixed width/height here; let JS handle it */
 }

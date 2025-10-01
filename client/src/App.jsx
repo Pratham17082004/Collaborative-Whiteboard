@@ -2,11 +2,11 @@ import { useState } from 'react';
 import Canvas from './Canvas';
 import './App.css'; 
 
-function App({ socket }) { 
+const App = ({ socket }) => { 
   const [roomId, setRoomId] = useState('');
   const [isJoined, setIsJoined] = useState(false);
   const [tool, setTool] = useState('pen'); 
-  const [eraserSize, setEraserSize] = useState(15); // New state for eraser size (15px default)
+  const [eraserSize, setEraserSize] = useState(15); 
 
   const handleJoinRoom = () => {
     if (roomId.trim()) {
@@ -18,9 +18,8 @@ function App({ socket }) {
   const handleClear = () => {
     if (!isJoined || !socket) return;
     
-    // Instead of window.confirm(), we use console log due to iFrame restrictions.
-    // In a real app, this would be a custom modal dialog.
-    const confirmed = true; // Assume confirmation for simplicity in this environment
+    // In a deployed environment, this would be a custom modal.
+    const confirmed = true; 
     
     if (confirmed) {
         socket.emit('clearCanvas');
@@ -29,12 +28,13 @@ function App({ socket }) {
   };
 
   return (
-    <div className="App p-4 flex flex-col items-center min-h-screen bg-gray-50">
-      <h1 className="text-4xl font-extrabold mb-4 text-gray-800">
+    // Set min-h-screen for full height and remove horizontal padding
+    <div className="App flex flex-col items-center min-h-screen bg-gray-50">
+      <h1 className="text-4xl font-extrabold my-4 text-gray-800">
         Collaborative Whiteboard ✍️
       </h1>
 
-      {/* Room Joining Section (Same as before) */}
+      {/* Room Joining Section */}
       <div className="flex space-x-2 mb-6 p-4 bg-white rounded-xl shadow-lg">
         <input
           type="text"
@@ -58,12 +58,13 @@ function App({ socket }) {
       </div>
 
       {isJoined && (
-        <div className="w-full flex flex-col items-center max-w-7xl">
+        // w-full max-w-none ensures the canvas can expand horizontally
+        <div className="w-full flex flex-col items-center max-w-none flex-grow">
           <p className="text-md text-gray-700 mb-4 bg-yellow-100 p-2 rounded-lg shadow-sm">
             Room: <span className="font-mono font-bold text-lg text-blue-800">{roomId}</span>
           </p>
           
-          {/* CONTROL PANEL (Aesthetic Upgrade) */}
+          {/* CONTROL PANEL */}
           <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mb-4 p-5 bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl">
               
               {/* Tool Selector */}
@@ -90,7 +91,7 @@ function App({ socket }) {
                   </button>
               </div>
 
-              {/* Eraser Size Control (New Feature) */}
+              {/* Eraser Size Control */}
               <div className="flex flex-col items-center space-y-1 mt-2 sm:mt-0">
                   <label className="text-xs font-medium text-gray-300">Eraser Size: {eraserSize}px</label>
                   <input
