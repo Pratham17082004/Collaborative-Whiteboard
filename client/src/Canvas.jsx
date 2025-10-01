@@ -1,3 +1,6 @@
+import React, { useRef, useEffect, useState } from 'react'; // <--- CRITICAL FIX: The missing import is here!
+import './Canvas.css'; 
+
 const Canvas = ({ socket, roomId, tool, eraserSize }) => {
   const canvasRef = useRef(null);
   const contextRef = useRef(null);
@@ -7,7 +10,7 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
   const startXRef = useRef(0);
   const startYRef = useRef(0);
 
-  // --- Utility Function to Draw a Line (Uses Ref to maintain context stability) ---
+  // --- Utility Function to Draw a Line ---
   const drawLine = (x0, y0, x1, y1, color, size) => { 
     const context = contextRef.current;
     
@@ -41,8 +44,9 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
     }
   };
 
-  // --- Drawing Logic for continuous lines (Stays outside useEffect) ---
-  const drawing = (e) => {
+  // --- Drawing Logic for continuous lines ---
+  // Memoize the drawing function to ensure stability inside useEffect dependencies
+  const drawing = React.useCallback((e) => {
     if (!isDrawing) return; 
     
     const { x: x1, y: y1 } = getCoordinates(e);
@@ -60,7 +64,8 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
 
     startXRef.current = x1;
     startYRef.current = y1;
-  };
+  }, [isDrawing, tool, eraserSize, socket]);
+
 
   // --- Event Handler Utility ---
   const getCoordinates = (e) => {
@@ -77,7 +82,7 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
     startXRef.current = x;
     startYRef.current = y;
     
-    setIsDrawing(true); // <--- Triggers re-render, but context is safe
+    setIsDrawing(true); 
 
     const color = tool === 'eraser' ? '#FFFFFF' : '#000000';
     const size = tool === 'eraser' ? eraserSize : 5;
@@ -105,15 +110,15 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
     // 2. Context Setup
     const context = canvas.getContext('2d');
     context.lineCap = 'round';
-    contextRef.current = context; // Save stable context ref
+    contextRef.current = context; 
 
     // 3. Cleanup resize listener
     return () => {
         window.removeEventListener('resize', setCanvasSize);
     };
-  }, []); // [] = Runs once!
+  }, []); 
 
-  // --- EFFECT 2: SOCKET LISTENERS & TOUCH FIX (Runs on socket/roomId changes) ---
+  // --- EFFECT 2: SOCKET LISTENERS & TOUCH FIX (Runs on socket/roomId/drawing changes) ---
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!socket || !roomId) return;
@@ -138,15 +143,13 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
     const touchMoveHandler = (e) => {
         e.preventDefault(); 
         
-        // Check current isDrawing state and call the drawing function
+        // Call the memoized drawing function
         if (e.touches && e.touches.length > 0) {
-            // Note: drawing logic must access the LATEST state via external reference/props, 
-            // but since drawing() is defined outside this effect, it's fine.
             drawing(e.touches[0]); 
         }
     };
 
-    // Add the listener (only runs when socket/roomId changes)
+    // Add the listener
     canvas.addEventListener('touchmove', touchMoveHandler, { passive: false });
 
 
@@ -157,8 +160,7 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
         socket.off('canvasCleared', handleCanvasCleared);
         canvas.removeEventListener('touchmove', touchMoveHandler); 
     };
-  }, [socket, roomId, drawing]); // Re-run if socket or room changes
-
+  }, [socket, roomId, drawing]); // Added drawing dependency here
 
   // The rest of the component remains the same
   return (
