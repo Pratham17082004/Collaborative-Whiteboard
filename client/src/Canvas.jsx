@@ -62,15 +62,6 @@ const Canvas = ({ socket, roomId, tool }) => { // Accepts 'tool' prop
         }, 50); 
     };
     socket.on('drawingHistory', handleHistory);
-    
-    // Listener for server-side clear confirmation (NEW)
-    const handleCanvasCleared = () => {
-        if(contextRef.current && canvasRef.current) {
-             contextRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-             console.log("Canvas cleared remotely.");
-        }
-    };
-    socket.on('canvasCleared', handleCanvasCleared);
 
     // Listener for real-time remote drawing
     const handleRemoteDrawing = (data) => {
@@ -78,16 +69,31 @@ const Canvas = ({ socket, roomId, tool }) => { // Accepts 'tool' prop
     };
     socket.on('drawing', handleRemoteDrawing);
 
+    // FIX: Manually set up touchmove event listener with { passive: false }
+    // This allows preventDefault() to work and stops the passive event warning.
+    const touchMoveHandler = (e) => {
+        // We still need the original preventDefault call here
+        e.preventDefault(); 
+        
+        if (e.touches && e.touches.length > 0) {
+            drawing(e.touches[0]);
+        }
+    };
+
+    // Add the listener with the critical { passive: false } option
+    canvas.addEventListener('touchmove', touchMoveHandler, { passive: false });
+
+
     // Cleanup function: remove listeners 
     return () => {
         socket.off('drawing', handleRemoteDrawing);
         socket.off('drawingHistory', handleHistory);
-        socket.off('canvasCleared', handleCanvasCleared);
+        canvas.removeEventListener('touchmove', touchMoveHandler); // Remove manual listener
     };
   }, [socket, roomId]);
 
 
-  // --- Event Handlers (Mouse/Touch) ---
+  // --- Event Handlers ---
 
   const getCoordinates = (e) => {
     const rect = canvasRef.current.getBoundingClientRect();
@@ -105,20 +111,17 @@ const Canvas = ({ socket, roomId, tool }) => { // Accepts 'tool' prop
     
     // Set line width based on current tool for local drawing only
     contextRef.current.lineWidth = tool === 'eraser' ? 15 : 5;
-
-    // --- FIX: Draw a dot immediately on press to ensure taps work ---
-    const color = tool === 'eraser' ? '#FFFFFF' : '#000000';
     
-    // Draw dot locally (x0=x1, y0=y1)
+    setIsDrawing(true);
+    
+    // Draw dot on tap (FIX for tap not registering)
+    const color = tool === 'eraser' ? '#FFFFFF' : '#000000';
     drawLine(x, y, x, y, color); 
 
-    // Emit the dot event to the server for persistence and synchronization
+    // Emit single dot data to the server immediately
     if (socket) {
       socket.emit('drawing', { x0: x, y0: y, x1: x, y1: y, color });
     }
-    // --- END FIX ---
-    
-    setIsDrawing(true);
   };
 
   const drawing = (e) => {
@@ -152,15 +155,12 @@ const Canvas = ({ socket, roomId, tool }) => { // Accepts 'tool' prop
     <canvas
       ref={canvasRef}
       className="whiteboard-canvas"
-      // Mouse handlers
       onMouseDown={startDrawing}
       onMouseMove={drawing}
       onMouseUp={stopDrawing}
       onMouseOut={stopDrawing} 
-      // Mobile touch handlers
+      // NOTE: onTouchMove is handled in the useEffect hook with { passive: false }
       onTouchStart={(e) => startDrawing(e.touches[0])}
-      // CRITICAL FIX: preventDefault stops the default scrolling/panning behavior
-      onTouchMove={(e) => { e.preventDefault(); drawing(e.touches[0]); }} 
       onTouchEnd={stopDrawing}
     />
   );
