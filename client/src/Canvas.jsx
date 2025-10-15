@@ -10,19 +10,30 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
   const startXRef = useRef(0);
   const startYRef = useRef(0);
   
-  // CRITICAL FIX 1: Stable Ref to store the array of strokes (history)
   const strokesRef = useRef([]); 
 
   // --- Utility Function to Draw a Line ---
   const drawLine = (x0, y0, x1, y1, color, size) => { 
     const context = contextRef.current;
     
+    // CRITICAL FIX: To draw a dot, we must ensure the path begins and ends.
     context.beginPath();
-    context.moveTo(x0, y0);
-    context.lineTo(x1, y1);
-    context.strokeStyle = color; 
+    
+    // If it's a true dot (x0=x1 and y0=y1), draw a small circle path instead of a line.
+    if (x0 === x1 && y0 === y1) {
+        // Draw a circle of radius size/2 for visibility
+        context.arc(x0, y0, size / 2, 0, 2 * Math.PI); 
+        context.fillStyle = color;
+        context.fill();
+    } else {
+        // Draw a standard line segment
+        context.moveTo(x0, y0);
+        context.lineTo(x1, y1);
+        context.strokeStyle = color; 
+        context.stroke();
+    }
+    
     context.lineWidth = size; 
-    context.stroke();
     context.closePath();
   };
   
@@ -31,10 +42,11 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
     if (!canvasRef.current || !contextRef.current) return;
     
     contextRef.current.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    contextRef.current.lineWidth = 5; // Reset context state before redraw
 
-    // Use the history array passed (or stored in ref)
     history.forEach(data => {
         const size = data.color === '#FFFFFF' ? data.size : 5;
+        // Use drawLine, which now handles the dot vs. line distinction
         drawLine(data.x0, data.y0, data.x1, data.y1, data.color, size);
     });
     contextRef.current.lineWidth = 5; 
@@ -43,13 +55,12 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
   // --- Core Sizing Logic (Layout Fix) ---
   const setCanvasSize = () => {
     if (canvasRef.current) {
-        // Use 95% of window width and calculate height dynamically
         canvasRef.current.width = window.innerWidth * 0.95;
         canvasRef.current.height = Math.max(window.innerHeight - 150, 400); 
     }
   };
-  
-  // CRITICAL FIX 2: Memoize the drawing function for useEffect stability
+
+  // --- Drawing Logic for continuous lines (Memoized for stability) ---
   const drawing = React.useCallback((e) => {
     if (!isDrawing) return; 
     
@@ -67,7 +78,7 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
     if (socket) {
       const stroke = { x0, y0, x1, y1, color, size };
       socket.emit('drawing', stroke);
-      strokesRef.current.push(stroke); // Save locally for immediate redraw
+      strokesRef.current.push(stroke); 
     }
 
     startXRef.current = x1;
@@ -101,7 +112,7 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
 
     if (socket) {
       socket.emit('drawing', dot);
-      strokesRef.current.push(dot); // Save dot to local history
+      strokesRef.current.push(dot); 
     }
   };
 
@@ -133,7 +144,7 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
     return () => {
         window.removeEventListener('resize', handleResizeAndRedraw);
     };
-  }, []); // Runs only once!
+  }, []); 
 
   // --- EFFECT 2: SOCKET LISTENERS (Stable) ---
   useEffect(() => {
@@ -151,7 +162,7 @@ const Canvas = ({ socket, roomId, tool, eraserSize }) => {
     // 2. Handle Remote Drawing (just redraws, the local drawing updates strokesRef)
     const handleRemoteDrawing = (data) => {
         drawLine(data.x0, data.y0, data.x1, data.y1, data.color, data.size);
-        strokesRef.current.push(data); // Add remote stroke to local history
+        strokesRef.current.push(data); 
     };
     socket.on('drawing', handleRemoteDrawing);
     
